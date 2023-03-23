@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 
-use mailbolt::configuration::get_configuration;
-use sqlx::{Connection, PgConnection, PgPool};
+use mailbolt::configuration::{get_configuration, DatabaseSettings};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 
 #[tokio::test]
 async fn health_check() {
@@ -84,10 +84,9 @@ async fn spawn_app() -> TestApp {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a random port");
     let port = listener.local_addr().unwrap().port();
 
-    let config = get_configuration().expect("Could not read configuration file");
-    let conn_pool = PgPool::connect(&config.database.connection_string())
-        .await
-        .expect("Could not connect to Postgres");
+    let mut config = get_configuration().expect("Could not read configuration file");
+    config.database.database_name = uuid::Uuid::new_v4().to_string();
+    let conn_pool = configure_db(&config.database).await;
 
     let server =
         mailbolt::startup::run(listener, conn_pool.clone()).expect("failed to bind address");
@@ -99,6 +98,29 @@ async fn spawn_app() -> TestApp {
         address,
         db_pool: conn_pool,
     }
+}
+
+// Create a new database whenever we spawn a new app
+// So tests can be executed in isolation
+pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
+    let mut conn = PgConnection::connect(&config.connection_string_without_db())
+        .await
+        .expect("Could not connect to DB");
+
+    conn.execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
+        .await
+        .expect("Could not create database for tests.");
+
+    let conn_pool = PgPool::connect(&config.connection_string())
+        .await
+        .expect("Could not connect to database.");
+
+    sqlx::migrate!("./migrations")
+        .run(&conn_pool)
+        .await
+        .expect("Could not migrate database");
+
+    conn_pool
 }
 
 pub struct TestApp {
