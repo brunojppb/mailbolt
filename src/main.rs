@@ -1,14 +1,14 @@
-use mailbolt::startup::run;
+use mailbolt::{configuration::get_configuration, startup::run};
 use std::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    // @TODO: Read this from environment
-    let port = "8000";
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", &port))
-        .unwrap_or_else(|_| panic!("Could not bind server to port '{}'", &port));
+    let config = get_configuration().expect("Could not read configuration file");
 
-    println!("Server started on port {}", port);
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.app_port))
+        .unwrap_or_else(|_| panic!("Could not bind server to port '{}'", config.app_port));
+
+    println!("Server started on port {}", config.app_port);
 
     run(listener)?.await
 }
