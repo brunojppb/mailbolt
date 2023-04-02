@@ -1,6 +1,10 @@
+use once_cell::sync::Lazy;
 use std::net::TcpListener;
 
-use mailbolt::configuration::{get_configuration, DatabaseSettings};
+use mailbolt::{
+    configuration::{get_configuration, DatabaseSettings},
+    telemetry::{get_subscriber, init_subscriber},
+};
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 
 #[tokio::test]
@@ -78,6 +82,10 @@ async fn subscribe_returns_400_when_data_is_missing() {
 // Spawn our web server in the background so we can execute
 // the web server and our tests concurrently.
 async fn spawn_app() -> TestApp {
+    // The first time `initialize` is invoked, the code in `TRACING` is executed.
+    // All other invocations will instead skip execution. It memoises this call.
+    Lazy::force(&TRACING);
+
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a random port");
     let port = listener.local_addr().unwrap().port();
 
@@ -124,6 +132,18 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
 
     conn_pool
 }
+
+static TRACING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info".into();
+    let subscriber_name = "test".into();
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+        init_subscriber(subscriber);
+    };
+});
 
 pub struct TestApp {
     pub address: String,
