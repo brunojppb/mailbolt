@@ -22,12 +22,6 @@ async fn health_check() {
 #[tokio::test]
 async fn subscribe_returns_200_for_valid_form_data() {
     let test_app = spawn_app().await;
-    let config = get_configuration().expect("Could not read configuration file");
-    let connection_string = config.database.connection_string();
-
-    let mut db_connection = PgConnection::connect(&connection_string)
-        .await
-        .expect("Failed to connect to Postgres.");
 
     let client = reqwest::Client::new();
 
@@ -44,9 +38,12 @@ async fn subscribe_returns_200_for_valid_form_data() {
     assert_eq!(200, resp.status().as_u16());
 
     let saved = sqlx::query!("SELECT email, name FROM subscriptions")
-        .fetch_one(&mut db_connection)
+        .fetch_one(&test_app.db_pool)
         .await
-        .expect("Could not fetch subscription");
+        .expect("Could not fetch subscriptions from db");
+
+    assert_eq!(saved.email, "ursula_le_guin@gmail.com");
+    assert_eq!(saved.name, "le guin");
 }
 
 #[tokio::test]
@@ -85,6 +82,8 @@ async fn spawn_app() -> TestApp {
     let port = listener.local_addr().unwrap().port();
 
     let mut config = get_configuration().expect("Could not read configuration file");
+    // Generate a random DB name for this test case
+    // So we can run every test case in an isolated DB instance1
     config.database.database_name = uuid::Uuid::new_v4().to_string();
     let conn_pool = configure_db(&config.database).await;
 
@@ -111,6 +110,9 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
         .await
         .expect("Could not create database for tests.");
 
+    // Given a connection pool that can be passed around
+    // between requests, we can run async queries using
+    // a minimal amount of connections.
     let conn_pool = PgPool::connect(&config.connection_string())
         .await
         .expect("Could not connect to database.");
