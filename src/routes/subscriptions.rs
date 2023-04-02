@@ -10,6 +10,8 @@ pub struct FormData {
 }
 
 pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) -> HttpResponse {
+    log::info!("Saving new subscriber");
+
     match sqlx::query!(
         r#"
     INSERT INTO subscriptions (id, email, name, subscribed_at)
@@ -23,9 +25,14 @@ pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) 
     .execute(conn_pool.get_ref())
     .await
     {
-        Ok(_) => HttpResponse::Ok().finish(),
+        Ok(_) => {
+            log::info!("New subscriber has been saved");
+            HttpResponse::Ok().finish()
+        }
         Err(e) => {
-            println!("Failed to execute query: {}", e);
+            // Using "{:?}" so we get the output of the Debug trait,
+            // which gives us a better message in this case, including the query.
+            log::error!("Could not save subscriber: {:?}", e);
             HttpResponse::InternalServerError().finish()
         }
     }
