@@ -9,26 +9,19 @@ pub struct FormData {
     pub email: String,
 }
 
-pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) -> HttpResponse {
-    tracing::info!(
-        "Saving subscriber. name: {} - email: {}",
-        form.name,
-        form.email
-    );
-
-    match sqlx::query!(
-        r#"
-    INSERT INTO subscriptions (id, email, name, subscribed_at)
-    VALUES ($1, $2, $3, $4)
-    "#,
-        Uuid::new_v4(),
-        form.email,
-        form.name,
-        Utc::now()
+#[
+    tracing::instrument(
+        name = "Adding a new subscriber",
+        skip(form, conn_pool),
+        fields(
+            request_id = %Uuid::new_v4(),
+            subscriber_email = %form.email,
+            subscriber_name = %form.name
+        )
     )
-    .execute(conn_pool.get_ref())
-    .await
-    {
+]
+pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) -> HttpResponse {
+    match insert_subscriber(&conn_pool, &form).await {
         Ok(_) => {
             tracing::info!("New subscriber has been saved");
             HttpResponse::Ok().finish()
@@ -40,4 +33,26 @@ pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) 
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+#[tracing::instrument(name = "Inserting new sub details to DB", skip(pool, form))]
+pub async fn insert_subscriber(pool: &PgPool, form: &FormData) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+    INSERT INTO subscriptions (id, email, name, subscribed_at)
+    VALUES ($1, $2, $3, $4)
+    "#,
+        Uuid::new_v4(),
+        form.email,
+        form.name,
+        Utc::now()
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Could not save subscriber: {:?}", e);
+        e
+    })?;
+
+    Ok(())
 }
