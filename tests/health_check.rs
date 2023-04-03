@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use secrecy::ExposeSecret;
 use std::net::TcpListener;
 
 use mailbolt::{
@@ -110,7 +111,7 @@ async fn spawn_app() -> TestApp {
 // Create a new database whenever we spawn a new app
 // So tests can be executed in isolation
 pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
-    let mut conn = PgConnection::connect(&config.connection_string_without_db())
+    let mut conn = PgConnection::connect(&config.connection_string_without_db().expose_secret())
         .await
         .expect("Could not connect to DB");
 
@@ -121,7 +122,7 @@ pub async fn configure_db(config: &DatabaseSettings) -> PgPool {
     // Given a connection pool that can be passed around
     // between requests, we can run async queries using
     // a minimal amount of connections.
-    let conn_pool = PgPool::connect(&config.connection_string())
+    let conn_pool = PgPool::connect(&config.connection_string().expose_secret())
         .await
         .expect("Could not connect to database.");
 

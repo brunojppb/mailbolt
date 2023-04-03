@@ -3,6 +3,7 @@ use mailbolt::{
     startup::run,
     telemetry::{get_subscriber, init_subscriber},
 };
+use secrecy::ExposeSecret;
 use sqlx::PgPool;
 use std::net::TcpListener;
 
@@ -13,7 +14,7 @@ async fn main() -> Result<(), std::io::Error> {
     init_subscriber(subscriber);
 
     let config = get_configuration().expect("Could not read configuration file");
-    let conn_pool = PgPool::connect(&config.database.connection_string())
+    let conn_pool = PgPool::connect(config.database.connection_string().expose_secret())
         .await
         .expect("Failed to connect to Postgres");
 
