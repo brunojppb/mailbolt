@@ -14,14 +14,21 @@ async fn main() -> Result<(), std::io::Error> {
     init_subscriber(subscriber);
 
     let config = get_configuration().expect("Could not read configuration file");
-    let conn_pool = PgPool::connect(config.database.connection_string().expose_secret())
-        .await
+    let conn_pool = PgPool::connect_lazy(config.database.connection_string().expose_secret())
         .expect("Failed to connect to Postgres");
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", config.app_port))
-        .unwrap_or_else(|_| panic!("Could not bind server to port '{}'", config.app_port));
+    let listener = TcpListener::bind(format!(
+        "{}:{}",
+        config.application.host, config.application.port
+    ))
+    .unwrap_or_else(|_| {
+        panic!(
+            "Could not bind server to port '{}'",
+            config.application.port
+        )
+    });
 
-    tracing::info!("Server started on port {}", config.app_port);
+    tracing::info!("Server started on port {}", config.application.port);
 
     run(listener, conn_pool)?.await
 }

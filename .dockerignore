@@ -1,0 +1,6 @@
+target
+.github
+.vscode
+.idea
+.env
+.env.example
