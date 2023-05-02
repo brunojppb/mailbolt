@@ -4,8 +4,8 @@ use mailbolt::{
     telemetry::{get_subscriber, init_subscriber},
 };
 use secrecy::ExposeSecret;
-use sqlx::PgPool;
-use std::net::TcpListener;
+use sqlx::postgres::PgPoolOptions;
+use std::{net::TcpListener, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -14,8 +14,11 @@ async fn main() -> Result<(), std::io::Error> {
     init_subscriber(subscriber);
 
     let config = get_configuration().expect("Could not read configuration file");
-    let conn_pool = PgPool::connect_lazy(config.database.connection_string().expose_secret())
-        .expect("Failed to connect to Postgres");
+
+    let conn_pool = PgPoolOptions::new()
+        .acquire_timeout(Duration::from_secs(2))
+        .connect_lazy(config.database.connection_string().expose_secret())
+        .expect("Failed to create a Postgres connection pool");
 
     let listener = TcpListener::bind(format!(
         "{}:{}",
