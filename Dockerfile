@@ -14,6 +14,15 @@ WORKDIR "/app"
 # Make sure the app does not run as root
 RUN chown nobody /app
 
+# OpenSSL is dynamically linked by some of our dependencies.
+# ca-certificates - it is needed to verify TLS certificates when establishing HTTPS connections
+RUN apt-get update -y \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  # Clean up
+  && apt-get autoremove -y \
+  && apt-get clean -y \
+  && rm -rf /var/lib/apt/lists/*
+
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/target/release/mailbolt ./
 # Make sure the config files are available

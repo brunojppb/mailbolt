@@ -1,4 +1,8 @@
-target
+target/
+tests/
+Dockerfile
+scripts/
+migrations/
 .github
 .vscode
 .idea
