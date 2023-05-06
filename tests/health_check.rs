@@ -79,6 +79,34 @@ async fn subscribe_returns_400_when_data_is_missing() {
     }
 }
 
+#[tokio::test]
+async fn subscribe_returns_400_when_fields_are_present_but_empty() {
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    let test_cases = vec![
+        ("name=&email=james%40email.com", "empty name"),
+        ("name=James&email=", "empty email"),
+        ("name=James&email=not-a-valid-email", "invalid email"),
+    ];
+
+    for (body, description) in test_cases {
+        let response = client
+            .post(format!("{}/subscriptions", app.address))
+            .header("Content-type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request");
+
+        assert_eq!(
+            400,
+            response.status().as_u16(),
+            "The API did not return a 200 status when the payload was {}",
+            description
+        )
+    }
+}
+
 // Spawn our web server in the background so we can execute
 // the web server and our tests concurrently.
 async fn spawn_app() -> TestApp {
