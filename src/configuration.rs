@@ -1,4 +1,5 @@
 use secrecy::{ExposeSecret, Secret};
+use serde_aux::field_attributes::deserialize_number_from_string;
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -8,6 +9,10 @@ pub struct Settings {
 
 #[derive(serde::Deserialize)]
 pub struct ApplicationSettings {
+    // The config crate will fail to read integer values from environment
+    // variables as it interprets everything as strings.
+    // By using serde_aux, we can instruct it to convert it to int properly.
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
 }
@@ -16,6 +21,7 @@ pub struct ApplicationSettings {
 pub struct DatabaseSettings {
     pub username: String,
     pub password: Secret<String>,
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
     pub database_name: String,
@@ -94,6 +100,16 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let settings = config::Config::builder()
         .add_source(config::File::from(config_dir.join("base.yml")))
         .add_source(config::File::from(config_dir.join(env_name)))
+        .add_source(
+            // This allows us to overwrite any of our config values
+            // using environment variables starting with APP_
+            // For instance, to overwrite the port number, we can pas
+            // in the following variable:
+            // APP_APPLICATION__PORT=3000
+            config::Environment::with_prefix("APP")
+                .prefix_separator("_")
+                .separator("__"),
+        )
         .build()?;
 
     settings.try_deserialize::<Settings>()
