@@ -1,6 +1,6 @@
 use mailbolt::{
     configuration::get_configuration,
-    startup::build,
+    startup::Application,
     telemetry::{get_subscriber, init_subscriber},
 };
 
@@ -11,7 +11,8 @@ async fn main() -> Result<(), std::io::Error> {
     init_subscriber(subscriber);
 
     let config = get_configuration().expect("Could not read configuration YML files");
-    let server = build(config).await?;
-    server.await?;
+    let app = Application::build(config).await?;
+
+    app.run_until_stopped().await?;
     Ok(())
 }

@@ -1,9 +1,9 @@
 use once_cell::sync::Lazy;
-use std::net::TcpListener;
+use uuid::Uuid;
 
 use mailbolt::{
     configuration::{get_configuration, DatabaseSettings},
-    email_client::EmailClient,
+    startup::{get_db_conn_pool, Application},
     telemetry::{get_subscriber, init_subscriber},
 };
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -15,31 +15,27 @@ pub async fn spawn_app() -> TestApp {
     // All other invocations will instead skip execution. It memoises this call.
     Lazy::force(&TRACING);
 
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind to a random port");
-    let port = listener.local_addr().unwrap().port();
+    let config = {
+        let mut c = get_configuration().expect("Failed to read config");
+        c.database.database_name = Uuid::new_v4().to_string();
+        // zero signals to the OS to use a random, available port.
+        c.application.port = 0;
+        c
+    };
 
-    let mut config = get_configuration().expect("Could not read configuration file");
-    // Generate a random DB name for this test case
-    // So we can run every test case in an isolated DB instance1
-    config.database.database_name = uuid::Uuid::new_v4().to_string();
-    let conn_pool = configure_db(&config.database).await;
+    //Create and migrate the test DB
+    configure_db(&config.database).await;
 
-    let sender_email = config.email_client.sender().expect("invalid sender email");
-    let email_client = EmailClient::new(
-        config.email_client.base_url,
-        sender_email,
-        config.email_client.auth_token,
-    );
+    let app = Application::build(config.clone())
+        .await
+        .expect("Could not build application");
 
-    let server = mailbolt::startup::run(listener, conn_pool.clone(), email_client)
-        .expect("failed to bind address");
-
-    let _ = tokio::spawn(server);
-    let address = format!("http://127.0.0.1:{}", port);
+    let address = format!("http://127.0.0.1:{}", app.port());
+    let _ = tokio::spawn(app.run_until_stopped());
 
     TestApp {
         address,
-        db_pool: conn_pool,
+        db_pool: get_db_conn_pool(&config.database),
     }
 }
 
@@ -82,6 +78,9 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 });
 
 pub struct TestApp {
+    /// Address where our app will be listening to HTTP requests.
+    /// Commonly using 127.0.0.1 during local tests.
     pub address: String,
+    /// Postgres connection pool for tests to perform queries against.
     pub db_pool: PgPool,
 }
