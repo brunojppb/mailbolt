@@ -21,7 +21,11 @@ async fn main() -> Result<(), std::io::Error> {
         .connect_lazy_with(config.database.with_db());
 
     let sender_email = config.email_client.sender().expect("Invalid sender email");
-    let email_client = EmailClient::new(config.email_client.base_url, sender_email);
+    let email_client = EmailClient::new(
+        config.email_client.base_url,
+        sender_email,
+        config.email_client.auth_token,
+    );
 
     let listener = TcpListener::bind(format!(
         "{}:{}",

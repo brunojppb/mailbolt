@@ -125,7 +125,11 @@ async fn spawn_app() -> TestApp {
     let conn_pool = configure_db(&config.database).await;
 
     let sender_email = config.email_client.sender().expect("invalid sender email");
-    let email_client = EmailClient::new(config.email_client.base_url, sender_email);
+    let email_client = EmailClient::new(
+        config.email_client.base_url,
+        sender_email,
+        config.email_client.auth_token,
+    );
 
     let server = mailbolt::startup::run(listener, conn_pool.clone(), email_client)
         .expect("failed to bind address");

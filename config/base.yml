@@ -10,3 +10,6 @@ database:
 email_client:
   base_url: "localhost"
   sender_email: "test@email.com"
+  # During prod, we inject the token via environment
+  # variables that take place over the hard-coded config
+  auth_token: "mock-token-for-development"
