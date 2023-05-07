@@ -3,6 +3,7 @@ use std::net::TcpListener;
 
 use mailbolt::{
     configuration::{get_configuration, DatabaseSettings},
+    email_client::EmailClient,
     telemetry::{get_subscriber, init_subscriber},
 };
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -123,8 +124,11 @@ async fn spawn_app() -> TestApp {
     config.database.database_name = uuid::Uuid::new_v4().to_string();
     let conn_pool = configure_db(&config.database).await;
 
-    let server =
-        mailbolt::startup::run(listener, conn_pool.clone()).expect("failed to bind address");
+    let sender_email = config.email_client.sender().expect("invalid sender email");
+    let email_client = EmailClient::new(config.email_client.base_url, sender_email);
+
+    let server = mailbolt::startup::run(listener, conn_pool.clone(), email_client)
+        .expect("failed to bind address");
 
     let _ = tokio::spawn(server);
     let address = format!("http://127.0.0.1:{}", port);

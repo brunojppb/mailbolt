@@ -2,3 +2,7 @@ application:
   host: "0.0.0.0"
 database:
   require_ssl: false
+email_client:
+  base_url: "https://api.postmarkapp.com"
+  # TODO: register on Postmark and get the sender email
+  sender_email: "test@email.com"
