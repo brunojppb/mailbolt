@@ -46,7 +46,7 @@ features = ["json", "rustls-tls"]
 version = "0.6"
 default-features = false
 features = [
-    "runtime-tokio-rustls",
+    "runtime-actix-rustls",
     "macros",
     "postgres",
     "uuid",

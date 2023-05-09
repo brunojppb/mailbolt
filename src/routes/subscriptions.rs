@@ -3,19 +3,26 @@ use chrono::Utc;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::domain::{NewSubscriber, SubscriberEmail, SubscriberName};
+use crate::{
+    domain::{NewSubscriber, SubscriberEmail, SubscriberName},
+    email_client::EmailClient,
+};
 
 #[
     tracing::instrument(
         name = "Adding a new subscriber",
-        skip(form, conn_pool),
+        skip(form, conn_pool, email_client),
         fields(
             subscriber_email = %form.email,
             subscriber_name = %form.name
         )
     )
 ]
-pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) -> HttpResponse {
+pub async fn subscribe(
+    form: web::Form<FormData>,
+    conn_pool: web::Data<PgPool>,
+    email_client: web::Data<EmailClient>,
+) -> HttpResponse {
     let new_subscriber = match form.0.try_into() {
         Ok(subscriber) => subscriber,
         Err(_) => return HttpResponse::BadRequest().finish(),
@@ -24,7 +31,19 @@ pub async fn subscribe(form: web::Form<FormData>, conn_pool: web::Data<PgPool>) 
     match insert_subscriber(&conn_pool, &new_subscriber).await {
         Ok(_) => {
             tracing::info!("New subscriber has been saved");
-            HttpResponse::Ok().finish()
+            println!("subscriber created name={:?}...", new_subscriber.name);
+            match email_client
+                .send_email(
+                    new_subscriber.email,
+                    "Welcome",
+                    "Welcome to Mailbolt",
+                    "Welcome to mailbolt",
+                )
+                .await
+            {
+                Ok(_) => HttpResponse::Ok().finish(),
+                Err(_) => HttpResponse::InternalServerError().finish(),
+            }
         }
         Err(e) => {
             // Using "{:?}" so we get the output of the Debug trait,

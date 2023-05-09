@@ -7,6 +7,7 @@ use mailbolt::{
     telemetry::{get_subscriber, init_subscriber},
 };
 use sqlx::{Connection, Executor, PgConnection, PgPool};
+use wiremock::MockServer;
 
 // Spawn our web server in the background so we can execute
 // the web server and our tests concurrently.
@@ -15,11 +16,15 @@ pub async fn spawn_app() -> TestApp {
     // All other invocations will instead skip execution. It memoises this call.
     Lazy::force(&TRACING);
 
+    let email_server = MockServer::start().await;
+
     let config = {
         let mut c = get_configuration().expect("Failed to read config");
         c.database.database_name = Uuid::new_v4().to_string();
         // zero signals to the OS to use a random, available port.
         c.application.port = 0;
+        // Overwrite email server endpoint so we can intercept and mock responses
+        c.email_client.base_url = email_server.uri();
         c
     };
 
@@ -36,6 +41,7 @@ pub async fn spawn_app() -> TestApp {
     TestApp {
         address,
         db_pool: get_db_conn_pool(&config.database),
+        email_server,
     }
 }
 
@@ -83,6 +89,8 @@ pub struct TestApp {
     pub address: String,
     /// Postgres connection pool for tests to perform queries against.
     pub db_pool: PgPool,
+    /// Intercept and mock email provider APIs
+    pub email_server: MockServer,
 }
 
 impl TestApp {

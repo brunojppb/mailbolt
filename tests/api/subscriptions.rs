@@ -1,10 +1,24 @@
+use wiremock::{matchers::method, Mock, ResponseTemplate};
+
 use crate::helpers::spawn_app;
 
 #[tokio::test]
 async fn subscribe_returns_200_for_valid_form_data() {
     let app = spawn_app().await;
+    mock_email_server_call().mount(&app.email_server).await;
 
     let req_body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    let resp = app.post_subscriptions(req_body.into()).await;
+
+    assert_eq!(200, resp.status().as_u16());
+}
+#[tokio::test]
+async fn subscribe_persists_a_new_subscriber() {
+    let app = spawn_app().await;
+    mock_email_server_call().mount(&app.email_server).await;
+
+    let req_body = "name=hiju%20guin&email=hiju_guin%40gmail.com";
 
     let resp = app.post_subscriptions(req_body.into()).await;
 
@@ -15,8 +29,8 @@ async fn subscribe_returns_200_for_valid_form_data() {
         .await
         .expect("Could not fetch subscriptions from db");
 
-    assert_eq!(saved.email, "ursula_le_guin@gmail.com");
-    assert_eq!(saved.name, "le guin");
+    assert_eq!(saved.email, "hiju_guin@gmail.com");
+    assert_eq!(saved.name, "hiju guin");
 }
 
 #[tokio::test]
@@ -42,6 +56,18 @@ async fn subscribe_returns_400_when_data_is_missing() {
 }
 
 #[tokio::test]
+async fn subscribe_sends_a_confirmation_email_for_valid_data() {
+    let app = spawn_app().await;
+    let body = "name=jenny%20Li&email=jenny%40email.com";
+
+    mock_email_server_call().mount(&app.email_server).await;
+
+    app.post_subscriptions(body.into()).await;
+
+    // Wiremock will assert API calls on drop
+}
+
+#[tokio::test]
 async fn subscribe_returns_400_when_fields_are_present_but_empty() {
     let app = spawn_app().await;
 
@@ -61,4 +87,11 @@ async fn subscribe_returns_400_when_fields_are_present_but_empty() {
             description
         )
     }
+}
+
+fn mock_email_server_call() -> Mock {
+    Mock::given(wiremock::matchers::path("/email"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
 }

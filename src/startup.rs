@@ -54,7 +54,8 @@ pub fn run(
     email_client: EmailClient,
 ) -> Result<Server, std::io::Error> {
     // Wrap the DB connection in web::Data which wraps this instance
-    // in an Arc reference that can be cloned.
+    // in an Arc reference that can be cloned across threads for the
+    // Actix web workers that will be spun up after the `run` call.
     let conn_pool = web::Data::new(pool);
     let email_client = web::Data::new(email_client);
 
