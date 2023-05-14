@@ -73,22 +73,9 @@ async fn subscribe_sends_a_confirmation_email_for_valid_data() {
 
     let email_req = &app.email_server.received_requests().await.unwrap()[0];
 
-    let email_body: serde_json::Value = serde_json::from_slice(&email_req.body).unwrap();
-    // Extract email links from body
-    let get_link = |s: &str| {
-        let links: Vec<_> = linkify::LinkFinder::new()
-            .links(s)
-            .filter(|l| *l.kind() == linkify::LinkKind::Url)
-            .collect();
+    let confirmation_links = app.get_confirmation_links(email_req);
 
-        assert_eq!(links.len(), 1);
-        links[0].as_str().to_owned()
-    };
-
-    let html_link = get_link(email_body["HtmlBody"].as_str().unwrap());
-    let text_link = get_link(email_body["TextBody"].as_str().unwrap());
-
-    assert_eq!(html_link, text_link);
+    assert_eq!(confirmation_links.html, confirmation_links.plain_text);
 
     // Wiremock will assert API calls on drop
 }

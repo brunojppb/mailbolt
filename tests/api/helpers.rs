@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use reqwest::Url;
 use uuid::Uuid;
 
 use mailbolt::{
@@ -85,6 +86,13 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
+/// Subscription confirmation links that
+/// a given email contains when sending it to new subscribers
+pub struct ConfirmationLinks {
+    pub html: reqwest::Url,
+    pub plain_text: reqwest::Url,
+}
+
 pub struct TestApp {
     /// Address where our app will be listening to HTTP requests.
     /// Commonly using 127.0.0.1 during local tests.
@@ -106,5 +114,36 @@ impl TestApp {
             .send()
             .await
             .expect("Failed to execute request")
+    }
+
+    pub fn get_confirmation_links(&self, email_req: &wiremock::Request) -> ConfirmationLinks {
+        let body: serde_json::Value = serde_json::from_slice(&email_req.body).unwrap();
+
+        // Extract email links from body
+        let get_link = |s: &str| {
+            let links: Vec<_> = linkify::LinkFinder::new()
+                .links(s)
+                .filter(|l| *l.kind() == linkify::LinkKind::Url)
+                .collect();
+
+            assert_eq!(links.len(), 1);
+            let raw_link = links[0].as_str().to_owned();
+            let mut confirmation_link = Url::parse(&raw_link).unwrap();
+
+            // Make sure we are calling our Mock server running locally and not
+            // a random domain somewhere else.
+            assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
+
+            // Update the port on the confirmation link to localhost given that
+            // the port assigned to our app is randomly assigned by the OS.
+            confirmation_link.set_port(Some(self.port)).unwrap();
+
+            confirmation_link
+        };
+
+        let html = get_link(body["HtmlBody"].as_str().unwrap());
+        let plain_text = get_link(body["TextBody"].as_str().unwrap());
+
+        ConfirmationLinks { html, plain_text }
     }
 }
