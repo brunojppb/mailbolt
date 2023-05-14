@@ -35,6 +35,9 @@ pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
+    // In production, needs to either be hard-coded in the prod.yml config
+    // or dynamically injected via the `APP_APPLICATION__BASE_URL` env variable
+    pub base_url: String,
 }
 
 #[derive(Clone, serde::Deserialize)]

@@ -35,11 +35,13 @@ pub async fn spawn_app() -> TestApp {
         .await
         .expect("Could not build application");
 
-    let address = format!("http://127.0.0.1:{}", app.port());
+    let app_port = app.port();
+    let address = format!("http://127.0.0.1:{}", app_port);
     let _ = tokio::spawn(app.run_until_stopped());
 
     TestApp {
         address,
+        port: app_port,
         db_pool: get_db_conn_pool(&config.database),
         email_server,
     }
@@ -87,6 +89,8 @@ pub struct TestApp {
     /// Address where our app will be listening to HTTP requests.
     /// Commonly using 127.0.0.1 during local tests.
     pub address: String,
+    /// application port assigned during test app bootstrap
+    pub port: u16,
     /// Postgres connection pool for tests to perform queries against.
     pub db_pool: PgPool,
     /// Intercept and mock email provider APIs

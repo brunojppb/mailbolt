@@ -7,12 +7,14 @@ use tracing_actix_web::TracingLogger;
 
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
-use crate::routes::{health_check, subscribe};
+use crate::routes::{confirm, health_check, subscribe};
 
 pub struct Application {
     port: u16,
     server: Server,
 }
+
+pub struct ApplicationBaseUrl(pub String);
 
 impl Application {
     pub async fn build(config: Settings) -> Result<Self, std::io::Error> {
@@ -30,7 +32,12 @@ impl Application {
         let listener = TcpListener::bind(address)?;
         let port = listener.local_addr().unwrap().port();
 
-        let server = run(listener, conn_pool, email_client)?;
+        let server = run(
+            listener,
+            conn_pool,
+            email_client,
+            config.application.base_url,
+        )?;
 
         Ok(Self { port, server })
     }
@@ -52,11 +59,13 @@ pub fn run(
     listener: TcpListener,
     pool: PgPool,
     email_client: EmailClient,
+    base_url: String,
 ) -> Result<Server, std::io::Error> {
     // Wrap the DB connection in web::Data which wraps this instance
     // in an Arc reference that can be cloned across threads for the
     // Actix web workers that will be spun up after the `run` call.
     let conn_pool = web::Data::new(pool);
+    let base_url = web::Data::new(ApplicationBaseUrl(base_url));
     let email_client = web::Data::new(email_client);
 
     let server = HttpServer::new(move || {
@@ -64,8 +73,10 @@ pub fn run(
             .wrap(TracingLogger::default())
             .route("/health_check", web::get().to(health_check))
             .route("/subscriptions", web::post().to(subscribe))
+            .route("/subscriptions/confirm", web::get().to(confirm))
             .app_data(conn_pool.clone())
             .app_data(email_client.clone())
+            .app_data(base_url.clone())
     })
     .listen(listener)?
     .run();

@@ -6,12 +6,13 @@ use uuid::Uuid;
 use crate::{
     domain::{NewSubscriber, SubscriberEmail, SubscriberName},
     email_client::EmailClient,
+    startup::ApplicationBaseUrl,
 };
 
 #[
     tracing::instrument(
         name = "Adding a new subscriber",
-        skip(form, conn_pool, email_client),
+        skip(form, conn_pool, email_client, base_url),
         fields(
             subscriber_email = %form.email,
             subscriber_name = %form.name
@@ -22,6 +23,7 @@ pub async fn subscribe(
     form: web::Form<FormData>,
     conn_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
+    base_url: web::Data<ApplicationBaseUrl>,
 ) -> HttpResponse {
     let new_subscriber = match form.0.try_into() {
         Ok(subscriber) => subscriber,
@@ -29,7 +31,7 @@ pub async fn subscribe(
     };
 
     match insert_subscriber(&conn_pool, &new_subscriber).await {
-        Ok(_) => match send_confirmation_email(&email_client, new_subscriber).await {
+        Ok(_) => match send_confirmation_email(&email_client, new_subscriber, &base_url.0).await {
             Ok(_) => HttpResponse::Ok().finish(),
             Err(_) => HttpResponse::InternalServerError().finish(),
         },
@@ -44,13 +46,17 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Send a confirmation email to a new subscriber",
-    skip(client, new_subscriber)
+    skip(client, new_subscriber, base_url)
 )]
 pub async fn send_confirmation_email(
     client: &EmailClient,
     new_subscriber: NewSubscriber,
+    base_url: &str,
 ) -> Result<(), reqwest::Error> {
-    let confirmation_link = "https://invalid.domain.com/subscriptions/confirm";
+    let confirmation_link = format!(
+        "{}/subscriptions/confirm?subscription_token=fake-token",
+        base_url
+    );
     let html_body = &format!(
         "Welcome to Mailbolt!<br/>\
                 Click <a href=\"{}\">here</a> to confirm your sub.",
