@@ -29,29 +29,10 @@ pub async fn subscribe(
     };
 
     match insert_subscriber(&conn_pool, &new_subscriber).await {
-        Ok(_) => {
-            tracing::info!("New subscriber has been saved");
-            let confirmation_link = "https://invalid.domain.com/subscriptions/confirm";
-            match email_client
-                .send_email(
-                    new_subscriber.email,
-                    "Welcome!",
-                    &format!(
-                        "Welcome to Mailbolt!<br/>\
-                        Click <a href=\"{}\">here</a> to confirm your sub.",
-                        confirmation_link
-                    ),
-                    &format!(
-                        "Welcome to Mailbolt!\nVisit {} to confirm your sub",
-                        confirmation_link
-                    ),
-                )
-                .await
-            {
-                Ok(_) => HttpResponse::Ok().finish(),
-                Err(_) => HttpResponse::InternalServerError().finish(),
-            }
-        }
+        Ok(_) => match send_confirmation_email(&email_client, new_subscriber).await {
+            Ok(_) => HttpResponse::Ok().finish(),
+            Err(_) => HttpResponse::InternalServerError().finish(),
+        },
         Err(e) => {
             // Using "{:?}" so we get the output of the Debug trait,
             // which gives us a better message in this case, including the query.
@@ -59,6 +40,29 @@ pub async fn subscribe(
             HttpResponse::InternalServerError().finish()
         }
     }
+}
+
+#[tracing::instrument(
+    name = "Send a confirmation email to a new subscriber",
+    skip(client, new_subscriber)
+)]
+pub async fn send_confirmation_email(
+    client: &EmailClient,
+    new_subscriber: NewSubscriber,
+) -> Result<(), reqwest::Error> {
+    let confirmation_link = "https://invalid.domain.com/subscriptions/confirm";
+    let html_body = &format!(
+        "Welcome to Mailbolt!<br/>\
+                Click <a href=\"{}\">here</a> to confirm your sub.",
+        confirmation_link
+    );
+    let plain_body = &format!(
+        "Welcome to Mailbolt!\nVisit {} to confirm your sub",
+        confirmation_link
+    );
+    client
+        .send_email(new_subscriber.email, "Welcome!", html_body, plain_body)
+        .await
 }
 
 #[tracing::instrument(name = "Inserting new sub details to DB", skip(pool, subscriber))]
@@ -75,7 +79,7 @@ pub async fn insert_subscriber(
         subscriber.email.as_ref(),
         subscriber.name.as_ref(),
         Utc::now(),
-        "confirmed"
+        "pending_confirmation"
     )
     .execute(pool)
     .await
