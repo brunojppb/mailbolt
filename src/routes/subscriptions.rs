@@ -31,13 +31,20 @@ pub async fn subscribe(
     match insert_subscriber(&conn_pool, &new_subscriber).await {
         Ok(_) => {
             tracing::info!("New subscriber has been saved");
-            println!("subscriber created name={:?}...", new_subscriber.name);
+            let confirmation_link = "https://invalid.domain.com/subscriptions/confirm";
             match email_client
                 .send_email(
                     new_subscriber.email,
-                    "Welcome",
-                    "Welcome to Mailbolt",
-                    "Welcome to mailbolt",
+                    "Welcome!",
+                    &format!(
+                        "Welcome to Mailbolt!<br/>\
+                        Click <a href=\"{}\">here</a> to confirm your sub.",
+                        confirmation_link
+                    ),
+                    &format!(
+                        "Welcome to Mailbolt!\nVisit {} to confirm your sub",
+                        confirmation_link
+                    ),
                 )
                 .await
             {
