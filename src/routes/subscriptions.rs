@@ -1,4 +1,6 @@
-use actix_web::{web, HttpResponse};
+use std::{fmt::Debug, write, writeln};
+
+use actix_web::{web, HttpResponse, ResponseError};
 use chrono::Utc;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -9,6 +11,46 @@ use crate::{
     email_client::EmailClient,
     startup::ApplicationBaseUrl,
 };
+
+fn error_chain_fmt(
+    e: &impl std::error::Error,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    writeln!(f, "{}\n", e)?;
+    let mut current = e.source();
+
+    while let Some(cause) = current {
+        writeln!(f, "Caused by:\n\t{}", cause)?;
+        current = cause.source();
+    }
+
+    Ok(())
+}
+
+pub struct StoreTokenError(sqlx::Error);
+
+impl std::fmt::Display for StoreTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "A database error has occurred while storing the subscription token"
+        )
+    }
+}
+
+impl Debug for StoreTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+impl ResponseError for StoreTokenError {}
+
+impl std::error::Error for StoreTokenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
 
 #[
     tracing::instrument(
@@ -25,42 +67,37 @@ pub async fn subscribe(
     conn_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
     base_url: web::Data<ApplicationBaseUrl>,
-) -> HttpResponse {
+) -> Result<HttpResponse, actix_web::Error> {
     let new_subscriber = match form.0.try_into() {
         Ok(subscriber) => subscriber,
-        Err(_) => return HttpResponse::BadRequest().finish(),
+        Err(_) => return Ok(HttpResponse::BadRequest().finish()),
     };
 
     let mut transaction = match conn_pool.begin().await {
         Ok(t) => t,
-        Err(_) => return HttpResponse::InternalServerError().finish(),
+        Err(_) => return Ok(HttpResponse::InternalServerError().finish()),
     };
 
     match insert_subscriber(&mut transaction, &new_subscriber).await {
         Ok(subscriber_id) => {
             let token = generate_subscription_token();
-            if store_token(&mut transaction, subscriber_id, &token)
-                .await
-                .is_err()
-            {
-                return HttpResponse::InternalServerError().finish();
-            }
+            store_token(&mut transaction, subscriber_id, &token).await?;
 
             if transaction.commit().await.is_err() {
-                return HttpResponse::InternalServerError().finish();
+                return Ok(HttpResponse::InternalServerError().finish());
             }
 
             match send_confirmation_email(&email_client, new_subscriber, &base_url.0, &token).await
             {
-                Ok(_) => HttpResponse::Ok().finish(),
-                Err(_) => HttpResponse::InternalServerError().finish(),
+                Ok(_) => Ok(HttpResponse::Ok().finish()),
+                Err(_) => Ok(HttpResponse::InternalServerError().finish()),
             }
         }
         Err(e) => {
             // Using "{:?}" so we get the output of the Debug trait,
             // which gives us a better message in this case, including the query.
             tracing::error!("Could not save subscriber: {:?}", e);
-            HttpResponse::InternalServerError().finish()
+            Ok(HttpResponse::InternalServerError().finish())
         }
     }
 }
@@ -131,7 +168,7 @@ pub async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: Uuid,
     subscription_token: &str,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), StoreTokenError> {
     sqlx::query!(
         r#"INSERT INTO subscription_tokens (subscription_token, subscriber_id) VALUES ($1, $2)"#,
         subscription_token,
@@ -141,7 +178,7 @@ pub async fn store_token(
     .await
     .map_err(|e| {
         tracing::error!("Failed to execute query: {:?}", e);
-        e
+        StoreTokenError(e)
     })?;
 
     Ok(())

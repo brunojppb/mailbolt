@@ -1,3 +1,5 @@
+use std::assert_eq;
+
 use wiremock::{matchers::method, Mock, ResponseTemplate};
 
 use crate::helpers::spawn_app;
@@ -100,6 +102,21 @@ async fn subscribe_returns_400_when_fields_are_present_but_empty() {
             description
         )
     }
+}
+
+#[tokio::test]
+async fn subscribe_fails_if_there_is_a_fatal_database_error() {
+    let app = spawn_app().await;
+    let body = "name=james-fu&email=fu%40email.com";
+
+    sqlx::query!("ALTER TABLE subscription_tokens DROP COLUMN subscription_token;")
+        .execute(&app.db_pool)
+        .await
+        .unwrap();
+
+    let resp = app.post_subscriptions(body.into()).await;
+
+    assert_eq!(resp.status().as_u16(), 500);
 }
 
 fn mock_email_server_call() -> Mock {
